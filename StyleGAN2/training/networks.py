@@ -640,8 +640,8 @@ class DiscriminatorEpilogue(torch.nn.Module):
         self.mbstd = MinibatchStdLayer(group_size=mbstd_group_size, num_channels=mbstd_num_channels) if mbstd_num_channels > 0 else None
         self.conv = Conv2dLayer(in_channels + mbstd_num_channels, in_channels, kernel_size=3, activation=activation, conv_clamp=conv_clamp)
         self.fc = FullyConnectedLayer(in_channels * (resolution ** 2), in_channels, activation=activation)
-        #self.out = FullyConnectedLayer(in_channels, 1 if cmap_dim == 0 else cmap_dim)
-        self.out = FullyConnectedLayer(in_channels, 20 if cmap_dim == 0 else cmap_dim) #20
+        #self.out = FullyConnectedLayer(in_channels, 1 if cmap_dim == 0 else cmap_dim) #default
+        self.out = FullyConnectedLayer(in_channels, 20 if cmap_dim == 0 else cmap_dim) 
         #self.srvf = SRVF()
 
     def forward(self, x, img, cmap, force_fp32=False):
@@ -663,12 +663,6 @@ class DiscriminatorEpilogue(torch.nn.Module):
         x = self.conv(x)
         x = self.fc(x.flatten(1))
         x = self.out(x)
-        
-        ### if normalize:
-        #x = F.normalize(x)
-        
-        ### if srvf
-        #x = self.srvf(x)
 
         # Conditioning.
         if self.cmap_dim > 0:
@@ -687,8 +681,8 @@ class Discriminator(torch.nn.Module):
         img_resolution,                 # Input resolution.
         img_channels,                   # Number of input color channels.
         architecture        = 'resnet', # Architecture: 'orig', 'skip', 'resnet'.
-        channel_base        = 32768, #32768, 8192    # Overall multiplier for the number of channels.
-        channel_max         = 512,  #512    # Maximum number of channels in any layer.
+        channel_base        = 32768, #8192    # Overall multiplier for the number of channels.
+        channel_max         = 512,      # Maximum number of channels in any layer.
         num_fp16_res        = 0,        # Use FP16 for the N highest resolutions.
         conv_clamp          = None,     # Clamp the output of convolution layers to +-X, None = disable clamping.
         cmap_dim            = None,     # Dimensionality of mapped conditioning label, None = default.
@@ -702,8 +696,7 @@ class Discriminator(torch.nn.Module):
         self.img_resolution_log2 = int(np.log2(img_resolution))
         self.img_channels = img_channels
         self.block_resolutions = [2 ** i for i in range(self.img_resolution_log2, 2, -1)]
-        channels_dict = {res: min(channel_base // res, channel_max) for res in self.block_resolutions + [4]}  #default
-        #channels_dict = {res: min(channel_base // (res*2), channel_max) for res in self.block_resolutions + [4]}
+        channels_dict = {res: min(channel_base // res, channel_max) for res in self.block_resolutions + [4]}  
         fp16_resolution = max(2 ** (self.img_resolution_log2 + 1 - num_fp16_res), 8)
 
         if cmap_dim is None:
@@ -737,33 +730,6 @@ class Discriminator(torch.nn.Module):
             cmap = self.mapping(None, c)
         x = self.b4(x, img, cmap)
         return x
-    
-class SRVF(nn.Module):
-    """
-    Triplet loss
-    Takes embeddings of an anchor sample, a positive sample and a negative sample
-    """
 
-    def __init__(self):
-        super(SRVF, self).__init__()
-
-    def forward(self, x):
-        #x = x.cuda()
-        n = x.size()[0]
-        N = x.size()[1]
-        v = torch.zeros(n,N)
-
-        # see q with dim n
-        x_r = torch.cat([x[:,1:N],x[:,:1]],1)
-        x_l = torch.cat([x[:,N-1:],x[:,:N-1]],1)
-        delta = N/2 * (x_r-x_l)/2
-        start = N * (x_r-x)
-        end = N * (x-x_l)
-        v = torch.cat([start[:1], delta[1:N-1], end[N-1:]])
-        q = torch.div(v,torch.sqrt(torch.abs(v) + 1e-8))
-            
-        #q = torch.div(v,torch.norm(v))
-        
-        return q
 
 #----------------------------------------------------------------------------
