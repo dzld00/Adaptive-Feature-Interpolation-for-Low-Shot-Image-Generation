@@ -97,11 +97,6 @@ def pr50k3_full(opts):
     precision, recall = precision_recall.compute_pr(opts, max_real=200000, num_gen=5000, nhood_size=3, row_batch_size=10000, col_batch_size=10000)
     return dict(pr50k3_full_precision=precision, pr50k3_full_recall=recall)
 
-# def pr50k3_full(opts):
-#     opts.dataset_kwargs.update(max_size=None, xflip=False)
-#     precision, recall = precision_recall.compute_pr(opts, max_real=1000, num_gen=1000, nhood_size=3, row_batch_size=10000, col_batch_size=10000)
-#     return dict(pr50k3_full_precision=precision, pr50k3_full_recall=recall)
-
 @register_metric
 def ppl2_wend(opts):
     ppl = perceptual_path_length.compute_ppl(opts, num_samples=50000, epsilon=1e-4, space='w', sampling='end', crop=False, batch_size=2)
