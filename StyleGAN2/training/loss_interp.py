@@ -77,7 +77,6 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 #loss_Gmain = torch.nn.functional.softplus(-gen_logits) # -log(sigmoid(gen_logits))
                 augment_prob, kk = dynamic_prob(gen_logits)
-                #print(augment_prob, kk)
                 batch_size = gen_logits.size()[0]
                 gen_logits_aug = near_interp(gen_logits, kk, augment_prob)
                 #loss_Gmain = torch.nn.functional.softplus(-gen_logits_aug).mean()
@@ -114,7 +113,6 @@ class StyleGAN2Loss(Loss):
                 training_stats.report('Loss/signs/fake', gen_logits.sign())
                 #loss_Dgen = torch.nn.functional.softplus(gen_logits) # -log(1 - sigmoid(gen_logits))
                 augment_prob, kk = dynamic_prob(gen_logits)
-                #print(augment_prob, kk)
                 batch_size = gen_logits.size()[0]
                 gen_logits_aug = near_interp(gen_logits, kk, augment_prob)
                 #loss_Dgen = torch.nn.functional.softplus(gen_logits_aug).mean()
@@ -157,89 +155,32 @@ class StyleGAN2Loss(Loss):
                 (real_logits.mean() * 0 + loss_Dreal + loss_Dr1).mean().mul(gain).backward()
                 
         return augment_prob, kk
-
-#----------------------------------------------------------------------------
-
-                
-class TripletLoss(nn.Module):
-    """
-    Triplet loss
-    Takes embeddings of an anchor sample, a positive sample and a negative sample
-    """
-
-    def __init__(self, margin, alpha):
-        super(TripletLoss, self).__init__()
-        self.margin = margin
-        self.alpha = alpha
-
-    def forward(self, anchor, positive, negative, size_average=True):    
-        
-        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
-        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
-        
-        cos = nn.CosineSimilarity(dim=1, eps=1e-6)
-        cos_reg = cos(negative - anchor, positive - anchor).sum(0) 
-        
-        #losses = F.relu(distance_positive - distance_negative + self.margin - self.alpha * cos_reg)
-        losses = F.softplus(distance_positive - distance_negative + self.margin - self.alpha * cos_reg)
-
-        return losses.mean()
+    
     
 
-def pairwise_distances(x, y):
-    '''
-    Input: x is a Nxd matrix
-           y is an optional Mxd matirx
-    Output: dist is a NxM matrix where dist[i,j] is the square norm between x[i,:] and y[j,:]
-            if y is not given then use 'y=x'.
-    i.e. dist[i,j] = ||x[i,:]-y[j,:]||^2
-    '''
-    x_norm = (x**2).sum(1).view(-1, 1)
-    if y is not None:
-        y_t = torch.transpose(y, 0, 1)
-        y_norm = (y**2).sum(1).view(1, -1)
-    else:
-        y_t = torch.transpose(x, 0, 1)
-        y_norm = x_norm.view(1, -1)
+### Adaptive Feature Interpolation----------------------------------------------------------------------------
+      
     
-    dist = x_norm + y_norm - 2.0 * torch.mm(x, y_t)
-    # Ensure diagonal is zero if x=y
-    # if y is None:
-    #     dist = dist - torch.diag(dist.diag)
-    return torch.sqrt(torch.clamp(dist, 0.0, np.inf))        
-
-
-def near_interp(embeddings, k, augment_prob, s=0):
+def near_interp(embeddings, k, augment_prob):
     if k == 1 or augment_prob == 0:
         return embeddings
     
     k = min(k, embeddings.size()[0])
     
     pd = pairwise_distances(embeddings, embeddings) 
-    
     pd = pd/pd.max()
-    pd_s = (1 / (1+pd))#.detach().cpu().numpy()
-    #print(pd_s)
+    pd_s = (1 / (1+pd))
     
     k_smallest = torch.topk(pd, k, largest=False).indices
     
-    #print('k_smallest: ', k_smallest.size())
-    #print(k_smallest)
-    
     concat_embeddings = embeddings.clone()
-    
-    #t = (1-augment_prob)**s
-    #t = -np.log(augment_prob)*s
-    #t = (1-augment_prob)*s
+
     t = 1
-    
-    #alpha = [1]*k #initialize
     alpha = torch.ones(k, device=embeddings.device)
     for row in k_smallest:
         inner_pts = torch.zeros((1,embeddings.size()[1]), device=embeddings.device)
         for i in range(k):
             alpha[i] = pd_s[row[0],row[i]]**t
-        #print(row, alpha)
         #q = np.random.dirichlet(alpha)
         q = torch.distributions.dirichlet.Dirichlet(alpha).sample().to(embeddings.device)
         #print(q)
@@ -247,11 +188,9 @@ def near_interp(embeddings, k, augment_prob, s=0):
             inner_pts = inner_pts + embeddings[row[idx].unsqueeze(-1),:] * q[idx,None]
         inner_pts = F.normalize(inner_pts)
         concat_embeddings = torch.cat((concat_embeddings, inner_pts), dim=0)
-    #print(concat_embeddings.size())
     
     batch_size = embeddings.size()[0]
     inner_embeddings = concat_embeddings[batch_size:,:]   
-    #print(inner_embeddings.size())
     
     out_embeddings = embeddings.clone()
     for idx in range(embeddings.size()[0]):
@@ -265,63 +204,26 @@ def near_interp(embeddings, k, augment_prob, s=0):
     
     return samples
 
-def dynamic_prob(embeddings, augment_type=6, r=1):
+
+def dynamic_prob(embeddings):
     embeddings = F.normalize(embeddings)
     batch_size = embeddings.size()[0] 
     
     D = pairwise_distances(embeddings, embeddings)   
     D = D.detach().cpu().numpy()  
-    #D = np.sqrt(D)
     D = D / np.amax(D)
     
     #l_sorted = cmdscale(D) 
-    l_sorted = eigen_mds(D)           
-    #l_sorted = eigen_pca(embeddings)
+    l_sorted = eigen_mds(D)               
     
-    #l_sorted = l_sorted[:3]
-    
-#     print()
-#     print(embeddings.size())
-#     print(D)
-#     print(l_sorted)
-    #print(np.var(l_sorted), np.mean(l_sorted))
-    
-    p = 0
-    k = batch_size - next(x[0] for x in enumerate(l_sorted) if x[1] < 0.1 * l_sorted[0]) #0.1,0.5
-    
-    if augment_type == 1:
-        p = np.mean(l_sorted) * np.var(l_sorted) * r
-        p = 1 / exp(p) 
-    
-    if augment_type == 2:
-        p = ((l_sorted[4] - l_sorted[7]) / (l_sorted[0] - l_sorted[7])) ** (l_sorted[0] * r)    
-        p = np.sin(p*1.57)     #p = exp( -5 * p) ; p = np.tanh(p)   
-        
-    if augment_type == 3:
-        #embeddings = F.normalize(embeddings)
-        p = torch.matmul(embeddings,torch.transpose(embeddings,0,1))
-        p = torch.det(p) * r
-        p = exp(p)
-      
-    if augment_type == 4:
-        #p = ((l_sorted[batch_size//2] - l_sorted[batch_size-1]) / (l_sorted[0] - l_sorted[batch_size-1])) ** (np.sum(l_sorted) * r)
-        p = (l_sorted[1]  / l_sorted[0]) ** (np.mean(l_sorted) * r)
-        
-       
-    if augment_type == 5:
-        p = exp(negative * r)
-        
-#     if augment_type == 6:
-#         p = (1 / exp(l_sorted[0]))**(np.mean(l_sorted) * r)
-#         #p = (1 / exp(l_sorted[0]))**(np.var(l_sorted) * r)
-    
+    k = batch_size - next(x[0] for x in enumerate(l_sorted) if x[1] < 0.1 * l_sorted[0])    
     p = (k-1) / batch_size
-    
-    #p = min(p, 0.9)
+
     #k = 2
-    #p = 0
+    #p = 0.9
     
     return p, k  
+
 
 def cmdscale(D):
     """                                                                                       
@@ -370,11 +272,36 @@ def cmdscale(D):
  
     return np.sort(evals)[::-1]
 
-def eigen_mds(pd):
+
+def eigen_mds(pd):   
     mds = MDS(n_components=len(pd), dissimilarity='precomputed')
     pts = mds.fit_transform(pd)
-    #print(pts.shape)
+
     _,l_sorted,_ = np.linalg.svd(pts)
+    
     return l_sorted
+
+
+def pairwise_distances(x, y):
+    '''
+    Input: x is a Nxd matrix
+           y is an optional Mxd matirx
+    Output: dist is a NxM matrix where dist[i,j] is the square norm between x[i,:] and y[j,:]
+            if y is not given then use 'y=x'.
+    i.e. dist[i,j] = ||x[i,:]-y[j,:]||^2
+    '''
+    x_norm = (x**2).sum(1).view(-1, 1)
+    if y is not None:
+        y_t = torch.transpose(y, 0, 1)
+        y_norm = (y**2).sum(1).view(1, -1)
+    else:
+        y_t = torch.transpose(x, 0, 1)
+        y_norm = x_norm.view(1, -1)
+    
+    dist = x_norm + y_norm - 2.0 * torch.mm(x, y_t)
+    # Ensure diagonal is zero if x=y
+    # if y is None:
+    #     dist = dist - torch.diag(dist.diag)
+    return torch.sqrt(torch.clamp(dist, 0.0, np.inf))      
 
 #----------------------------------------------------------------------------
