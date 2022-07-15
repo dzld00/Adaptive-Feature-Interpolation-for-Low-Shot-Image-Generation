@@ -9,7 +9,7 @@ Paper: [https://arxiv.org/abs/2106.10777](https://arxiv.org/abs/2112.02450)
 </p>
 
 # Usage:
-Please refer to feature_interp.py for direct use, or StyleGAN2 implementation in the corresponding folder.  
+Please refer to interp_feature.py for direct use, or StyleGAN2 implementation in the corresponding folder.  
 
 # Citation
 ```
