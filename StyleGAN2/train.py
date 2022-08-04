@@ -364,13 +364,6 @@ def setup_training_loop_kwargs(
 
 def subprocess_fn(rank, args, temp_dir):
     dnnlib.util.Logger(file_name=os.path.join(args.run_dir, 'log.txt'), file_mode='a', should_flush=True)
-    
-    from shutil import copy
-    copy('train.py', args.run_dir+'/train.py') 
-    copy('training/loss.py', args.run_dir+'/loss.py')  
-    copy('training/loss_mm.py', args.run_dir+'/loss_mm.py')
-    copy('training/loss_interp.py', args.run_dir+'/loss_interp.py')
-    copy('training/networks.py', args.run_dir+'/neworks.py')  
 
     # Init torch.distributed.
     if args.num_gpus > 1:
