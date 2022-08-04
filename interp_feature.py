@@ -19,22 +19,27 @@ def near_interp(embeddings, k, augment_prob):
     pd = pd/pd.max()
     pd_s = (1 / (1+pd))
     
+    # Select top k near neighbours
     k_smallest = torch.topk(pd, k, largest=False).indices # shape: batch_size x k 
-    
+
+    # Feature interpolation    
     t = 1
     alpha = torch.ones(k, device=embeddings.device)
-    inner_embeddings = []
+    inner_embeddings = []  
     for row in k_smallest:
-        for i in range(k):
+        for i in range(k):                   
             alpha[i] = pd_s[row[0],row[i]]**t
                 
         p = torch.distributions.dirichlet.Dirichlet(alpha).sample().to(embeddings.device)
-        # print(p)
+        
         inner_pts = torch.matmul(p.reshape((1,-1)),embeddings.index_select(0,row))
         inner_embeddings.append(F.normalize(inner_pts))
     
     batch_size = embeddings.size()[0]    
     out_embeddings = []
+    
+ 
+    # Output interpolated feature with probability p 
     for idx in range(batch_size):
         p = random.random()
         if p < augment_prob:
@@ -56,6 +61,7 @@ def dynamic_prob(embeddings):
     #l_sorted = cmdscale(D) 
     l_sorted = eigen_mds(D)               
     
+    # Calculate k,p based on number of large eigenvalues
     k = batch_size - next(x[0] for x in enumerate(l_sorted) if x[1] < 0.1 * l_sorted[0])    
     p = (k-1) / batch_size
 
