@@ -2,7 +2,7 @@
 
 Paper: [https://arxiv.org/abs/2106.10777](https://arxiv.org/abs/2112.02450)
 
-Below are generated images trained on datasets with 60-1000 samples:
+Below are generated images trained on datasets with 60-1000 samples. Fast access to datasets: https://github.com/odegeasslbc/FastGAN-pytorch (Liu's repo).
 <p align="center">
 <img src="comp_gen.jpg" align="middle" width="600">
 </p>
