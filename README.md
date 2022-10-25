@@ -1,6 +1,8 @@
 # Adaptive-Feature-Interpolation-for-Low-Shot-Image-Generation (ECCV 2022)
 
 Paper: [https://arxiv.org/abs/2106.10777](https://arxiv.org/abs/2112.02450)
+
+Below are generated images trained on datasets with 60-1000 samples:
 <p align="center">
 <img src="comp_gen.jpg" align="middle" width="600">
 </p>
